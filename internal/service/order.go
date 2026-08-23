@@ -14,6 +14,13 @@ import (
 	"github.com/theplant/luhn"
 )
 
+const (
+	StatusRegistered string = "REGISTERED"
+	StatusProcessing string = "PROCESSING"
+	StatusInvalid    string = "INVALID"
+	StatusProcessed  string = "PROCESSED"
+)
+
 type OrderService interface {
 	UploadOrder(ctx context.Context, userID int64, number int64) (*models.Order, error)
 	GetUserOrders(ctx context.Context, userID int64) ([]*models.Order, error)
@@ -97,12 +104,12 @@ func (s *orderService) processOrder(ctx context.Context, orderID int64, number s
 	var newStatus models.OrderStatus
 	var accrual *float64
 	switch resp.Status {
-	case "REGISTERED", "PROCESSING":
+	case StatusRegistered, StatusProcessing:
 		newStatus = models.StatusProcessing
-	case "INVALID":
+	case StatusInvalid:
 		newStatus = models.StatusInvalid
 		accrual = nil
-	case "PROCESSED":
+	case StatusProcessed:
 		newStatus = models.StatusProcessed
 		accrual = resp.Accrual
 	default:

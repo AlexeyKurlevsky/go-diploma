@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -35,18 +36,35 @@ func main() {
 	// Инициализация репозиториев
 	userRepo := storage.NewUserRepository(db.Pool)
 	orderRepo := storage.NewOrderRepository(db.Pool)
+	withdrawalRepo := storage.NewWithdrawalRepository(db.Pool)
+	balanceRepo := storage.NewBalanceRepository(db.Pool)
 
 	// Инициализация сервисов
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpireTime)
 	accrualClient := client.NewAccrualClient(cfg.AccrualAddr, 10*time.Second)
 	orderService := service.NewOrderService(orderRepo, accrualClient)
+	balanceService := service.NewBalanceService(balanceRepo, withdrawalRepo)
 
 	// Инициализация хендлеров
 	authHandler := handlers.NewAuthHandler(authService)
 	orderHandler := handlers.NewOrderHandler(orderService)
+	balanceHandler := handlers.NewBalanceHandler(balanceService)
 
 	// Роутер
-	r := router.NewRouter(authHandler, orderHandler, authService)
+	r := router.NewRouter(authHandler, orderHandler, balanceHandler, authService)
+
+	// Фоновый воркер для обновления MV с балансом
+	go func() {
+		ticker := time.NewTicker(30 * time.Second) // обновляем каждые 30 секунд
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := balanceService.RefreshBalanceView(ctx); err != nil {
+				log.Printf("failed to refresh balance view: %v", err)
+			}
+			cancel()
+		}
+	}()
 
 	logger.Log.Info("Config",
 		zap.String("ServerAddr", cfg.ServerAddr),

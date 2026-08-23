@@ -12,8 +12,8 @@ import (
 func NewRouter(
 	authHandler *handlers.AuthHandler,
 	orderHandler *handlers.OrderHandler,
+	balanceHandler *handlers.BalanceHandler,
 	authService service.AuthService,
-	// другие хендлеры (заказы, баланс) ...
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -29,6 +29,10 @@ func NewRouter(
 		r.Use(mymiddleware.AuthMiddleware(authService))
 		r.Post("/api/user/orders", orderHandler.UploadOrder)
 		r.Get("/api/user/orders", orderHandler.GetOrders)
+
+		r.Get("/api/user/balance", balanceHandler.GetBalance)
+		r.Post("/api/user/balance/withdraw", balanceHandler.Withdraw)
+		r.Get("/api/user/withdrawals", balanceHandler.GetWithdrawals)
 	})
 
 	return r
