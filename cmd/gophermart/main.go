@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/AlexeyKurlevsky/go-diploma/internal/client"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/config"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/handlers"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/logger"
@@ -29,20 +31,22 @@ func main() {
 	if err != nil {
 		log.Fatal("failed to connect to DB:", err)
 	}
-	defer db.Close()
 
 	// Инициализация репозиториев
-	userRepo := storage.NewUserRepository(db.DbConn)
+	userRepo := storage.NewUserRepository(db.Pool)
+	orderRepo := storage.NewOrderRepository(db.Pool)
 
 	// Инициализация сервисов
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpireTime)
+	accrualClient := client.NewAccrualClient(cfg.AccrualAddr, 10*time.Second)
+	orderService := service.NewOrderService(orderRepo, accrualClient)
 
 	// Инициализация хендлеров
 	authHandler := handlers.NewAuthHandler(authService)
-	// другие хендлеры...
+	orderHandler := handlers.NewOrderHandler(orderService)
 
 	// Роутер
-	r := router.NewRouter(authHandler, authService /*, ... */)
+	r := router.NewRouter(authHandler, orderHandler, authService)
 
 	logger.Log.Info("Config",
 		zap.String("ServerAddr", cfg.ServerAddr),

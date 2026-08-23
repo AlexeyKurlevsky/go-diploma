@@ -2,29 +2,31 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type userRepo struct {
-	db *sql.DB
+	pool *pgxpool.Pool
 }
 
-func NewUserRepository(db *sql.DB) storage.UserRepository {
-	return &userRepo{db: db}
+func NewUserRepository(pool *pgxpool.Pool) storage.UserRepository {
+	return &userRepo{pool: pool}
 }
 
 func (r *userRepo) Create(ctx context.Context, user *models.User) error {
 	query := `INSERT INTO users (login, password_hash) VALUES ($1, $2) RETURNING id`
-	err := r.db.QueryRowContext(ctx, query, user.Login, user.PasswordHash).Scan(&user.ID)
+	err := r.pool.QueryRow(ctx, query, user.Login, user.PasswordHash).Scan(&user.ID)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" { // unique violation
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
 			return storage.ErrUserExists
 		}
 		return fmt.Errorf("create user: %w", err)
@@ -35,9 +37,9 @@ func (r *userRepo) Create(ctx context.Context, user *models.User) error {
 func (r *userRepo) FindByLogin(ctx context.Context, login string) (*models.User, error) {
 	query := `SELECT id, login, password_hash FROM users WHERE login = $1`
 	var user models.User
-	err := r.db.QueryRowContext(ctx, query, login).Scan(&user.ID, &user.Login, &user.PasswordHash)
+	err := r.pool.QueryRow(ctx, query, login).Scan(&user.ID, &user.Login, &user.PasswordHash)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, storage.ErrUserNotFound
 		}
 		return nil, fmt.Errorf("find by login: %w", err)

@@ -11,6 +11,7 @@ import (
 
 func NewRouter(
 	authHandler *handlers.AuthHandler,
+	orderHandler *handlers.OrderHandler,
 	authService service.AuthService,
 	// другие хендлеры (заказы, баланс) ...
 ) *chi.Mux {
@@ -26,6 +27,8 @@ func NewRouter(
 	// Защищённые маршруты
 	r.Group(func(r chi.Router) {
 		r.Use(mymiddleware.AuthMiddleware(authService))
+		r.Post("/api/user/orders", orderHandler.UploadOrder)
+		r.Get("/api/user/orders", orderHandler.GetOrders)
 	})
 
 	return r
