@@ -37,3 +37,4 @@ FROM users u
 LEFT JOIN orders o ON u.id = o.user_id AND o.status = 'PROCESSED'  -- только подтверждённые заказы
 LEFT JOIN withdrawals w ON u.id = w.user_id
 GROUP BY u.id;
+CREATE UNIQUE INDEX idx_user_balance_user_id ON user_balance (user_id);

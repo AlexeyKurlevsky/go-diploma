@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-
-	"github.com/AlexeyKurlevsky/go-diploma/internal/service"
+	"time"
 
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
+	"github.com/AlexeyKurlevsky/go-diploma/internal/service"
 )
 
 type AuthHandler struct {
@@ -16,6 +16,18 @@ type AuthHandler struct {
 
 func NewAuthHandler(authService service.AuthService) *AuthHandler {
 	return &AuthHandler{authService: authService}
+}
+
+func setAuthCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    token,
+		HttpOnly: true,
+		Secure:   false, // для локальной разработки (если не HTTPS)
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+		MaxAge:   int(24 * time.Hour / time.Second), // срок жизни как в JWT
+	})
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -38,11 +50,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// Устанавливаем cookie
+	setAuthCookie(w, token)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"token":   token,
-		"user_id": userID.String(), // преобразуем UUID в строку
+		"user_id": userID.String(),
 	})
 }
 
@@ -63,6 +77,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	setAuthCookie(w, token)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
