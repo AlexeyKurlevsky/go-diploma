@@ -8,6 +8,7 @@ import (
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,18 +23,19 @@ func NewOrderRepository(pool *pgxpool.Pool) storage.OrderRepository {
 }
 
 func (r *orderRepo) Create(ctx context.Context, order *models.Order) error {
+	order.ID = uuid.New()
 	query := `
-		INSERT INTO orders (user_id, number, status, uploaded_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id
-	`
-	err := r.pool.QueryRow(ctx, query,
+        INSERT INTO orders (id, user_id, number, status, uploaded_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+    `
+	_, err := r.pool.Exec(ctx, query,
+		order.ID,
 		order.UserID,
 		order.Number,
 		order.Status,
 		order.UploadedAt,
 		order.UpdatedAt,
-	).Scan(&order.ID)
+	)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -46,12 +48,12 @@ func (r *orderRepo) Create(ctx context.Context, order *models.Order) error {
 
 func (r *orderRepo) FindByNumber(ctx context.Context, number string) (*models.Order, error) {
 	query := `
-		SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
-		FROM orders
-		WHERE number = $1
-	`
+        SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
+        FROM orders
+        WHERE number = $1
+    `
 	order := &models.Order{}
-	var accrual *float64 // nullable
+	var accrual *float64
 	err := r.pool.QueryRow(ctx, query, number).Scan(
 		&order.ID,
 		&order.UserID,
@@ -67,17 +69,17 @@ func (r *orderRepo) FindByNumber(ctx context.Context, number string) (*models.Or
 		}
 		return nil, fmt.Errorf("find by number: %w", err)
 	}
-	order.Accrual = accrual // может быть nil
+	order.Accrual = accrual
 	return order, nil
 }
 
-func (r *orderRepo) FindByUserID(ctx context.Context, userID int64) ([]*models.Order, error) {
+func (r *orderRepo) FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Order, error) {
 	query := `
-		SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
-		FROM orders
-		WHERE user_id = $1
-		ORDER BY uploaded_at DESC
-	`
+        SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
+        FROM orders
+        WHERE user_id = $1
+        ORDER BY uploaded_at DESC
+    `
 	rows, err := r.pool.Query(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("find by user: %w", err)
@@ -103,18 +105,15 @@ func (r *orderRepo) FindByUserID(ctx context.Context, userID int64) ([]*models.O
 		order.Accrual = accrual
 		orders = append(orders, order)
 	}
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration: %w", err)
-	}
-	return orders, nil
+	return orders, rows.Err()
 }
 
-func (r *orderRepo) UpdateStatusAndAccrual(ctx context.Context, orderID int64, status models.OrderStatus, accrual *float64) error {
+func (r *orderRepo) UpdateStatusAndAccrual(ctx context.Context, orderID uuid.UUID, status models.OrderStatus, accrual *float64) error {
 	query := `
-		UPDATE orders
-		SET status = $1, accrual = $2, updated_at = NOW()
-		WHERE id = $3
-	`
+        UPDATE orders
+        SET status = $1, accrual = $2, updated_at = NOW()
+        WHERE id = $3
+    `
 	_, err := r.pool.Exec(ctx, query, status, accrual, orderID)
 	if err != nil {
 		return fmt.Errorf("update order: %w", err)
@@ -124,12 +123,12 @@ func (r *orderRepo) UpdateStatusAndAccrual(ctx context.Context, orderID int64, s
 
 func (r *orderRepo) FindPendingOrders(ctx context.Context, limit int) ([]*models.Order, error) {
 	query := `
-		SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
-		FROM orders
-		WHERE status IN ($1, $2)
-		ORDER BY uploaded_at ASC
-		LIMIT $3
-	`
+        SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
+        FROM orders
+        WHERE status IN ($1, $2)
+        ORDER BY uploaded_at ASC
+        LIMIT $3
+    `
 	rows, err := r.pool.Query(ctx, query, models.StatusNew, models.StatusProcessing, limit)
 	if err != nil {
 		return nil, fmt.Errorf("find pending: %w", err)
@@ -155,5 +154,5 @@ func (r *orderRepo) FindPendingOrders(ctx context.Context, limit int) ([]*models
 		order.Accrual = accrual
 		orders = append(orders, order)
 	}
-	return orders, nil
+	return orders, rows.Err()
 }

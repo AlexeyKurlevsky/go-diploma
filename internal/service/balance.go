@@ -9,12 +9,14 @@ import (
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 	"github.com/theplant/luhn"
+
+	"github.com/google/uuid"
 )
 
 type BalanceService interface {
-	GetBalance(ctx context.Context, userID int64) (current float64, withdrawn float64, err error)
-	Withdraw(ctx context.Context, userID int64, orderNumber string, amount float64) error
-	GetWithdrawals(ctx context.Context, userID int64) ([]*models.Withdrawal, error)
+	GetBalance(ctx context.Context, userID uuid.UUID) (current float64, withdrawn float64, err error)
+	Withdraw(ctx context.Context, userID uuid.UUID, orderNumber string, amount float64) error
+	GetWithdrawals(ctx context.Context, userID uuid.UUID) ([]*models.Withdrawal, error)
 	RefreshBalanceView(ctx context.Context) error
 }
 
@@ -30,7 +32,7 @@ func NewBalanceService(balanceRepo storage.BalanceRepository, withdrawalRepo sto
 	}
 }
 
-func (s *balanceService) GetBalance(ctx context.Context, userID int64) (float64, float64, error) {
+func (s *balanceService) GetBalance(ctx context.Context, userID uuid.UUID) (float64, float64, error) {
 	balance, err := s.balanceRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		return 0, 0, fmt.Errorf("get balance: %w", err)
@@ -38,7 +40,7 @@ func (s *balanceService) GetBalance(ctx context.Context, userID int64) (float64,
 	return balance.Balance, balance.TotalWithdrawn, nil
 }
 
-func (s *balanceService) Withdraw(ctx context.Context, userID int64, orderNumber string, amount float64) error {
+func (s *balanceService) Withdraw(ctx context.Context, userID uuid.UUID, orderNumber string, amount float64) error {
 	// 1. Валидация номера заказа (алгоритм Луна)
 	num, err := strconv.Atoi(orderNumber)
 	if err != nil {
@@ -51,8 +53,6 @@ func (s *balanceService) Withdraw(ctx context.Context, userID int64, orderNumber
 	if amount <= 0 {
 		return ErrInvalidAmount
 	}
-
-	// 2. Проверяем, достаточно ли средств (из MV)
 	balance, err := s.balanceRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("get balance: %w", err)
@@ -60,8 +60,6 @@ func (s *balanceService) Withdraw(ctx context.Context, userID int64, orderNumber
 	if balance.Balance < amount {
 		return ErrInsufficientFunds
 	}
-
-	// 3. Создаём запись списания
 	withdrawal := &models.Withdrawal{
 		UserID:      userID,
 		OrderNumber: orderNumber,
@@ -71,22 +69,14 @@ func (s *balanceService) Withdraw(ctx context.Context, userID int64, orderNumber
 	if err := s.withdrawalRepo.Create(ctx, withdrawal); err != nil {
 		return fmt.Errorf("create withdrawal: %w", err)
 	}
-
-	// 4. Обновляем материализованное представление (асинхронно или синхронно)
-	// Рекомендуется обновлять асинхронно, чтобы не блокировать ответ клиента
-	// Можно либо использовать горутину, либо полагаться на фоновый воркер
 	go func() {
 		ctxBg := context.Background()
-		if err := s.balanceRepo.RefreshMaterializedView(ctxBg); err != nil {
-			// Логируем ошибку, но не возвращаем клиенту
-			// log.Printf("failed to refresh balance view: %v", err)
-		}
+		_ = s.balanceRepo.RefreshMaterializedView(ctxBg)
 	}()
-
 	return nil
 }
 
-func (s *balanceService) GetWithdrawals(ctx context.Context, userID int64) ([]*models.Withdrawal, error) {
+func (s *balanceService) GetWithdrawals(ctx context.Context, userID uuid.UUID) ([]*models.Withdrawal, error) {
 	return s.withdrawalRepo.FindByUserID(ctx, userID)
 }
 

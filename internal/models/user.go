@@ -1,9 +1,11 @@
 package models
 
+import "github.com/google/uuid"
+
 type User struct {
-	ID           int64  `json:"id"`
-	Login        string `json:"login"`
-	PasswordHash []byte `json:"-"` // не выводим в JSON
+	ID           uuid.UUID `json:"id"`
+	Login        string    `json:"login"`
+	PasswordHash []byte    `json:"-"` // не выводим в JSON
 }
 
 type Credentials struct {

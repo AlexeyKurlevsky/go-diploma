@@ -7,11 +7,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/AlexeyKurlevsky/go-diploma/internal/client"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
-
-	"github.com/AlexeyKurlevsky/go-diploma/internal/client"
 	"github.com/theplant/luhn"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -22,9 +23,9 @@ const (
 )
 
 type OrderService interface {
-	UploadOrder(ctx context.Context, userID int64, number int64) (*models.Order, error)
-	GetUserOrders(ctx context.Context, userID int64) ([]*models.Order, error)
-	ProcessPendingOrders(ctx context.Context, limit int) error // для воркера
+	UploadOrder(ctx context.Context, userID uuid.UUID, number string) (*models.Order, error)
+	GetUserOrders(ctx context.Context, userID uuid.UUID) ([]*models.Order, error)
+	ProcessPendingOrders(ctx context.Context, limit int) error
 }
 
 type orderService struct {
@@ -39,31 +40,29 @@ func NewOrderService(orderRepo storage.OrderRepository, accrualClient client.Acc
 	}
 }
 
-func (s *orderService) UploadOrder(ctx context.Context, userID int64, number int64) (*models.Order, error) {
-	// 1. Валидация номера (алгоритм Луна)
-	if !luhn.Valid(int(number)) {
+func (s *orderService) UploadOrder(ctx context.Context, userID uuid.UUID, orderNumber string) (*models.Order, error) {
+	// 1. Валидация номера заказа (алгоритм Луна)
+	num, err := strconv.Atoi(orderNumber)
+	if err != nil {
+		fmt.Println("Error during conversion:", err)
 		return nil, ErrInvalidOrderNumber
 	}
-	numberStr := strconv.FormatInt(number, 10)
-
-	// 2. Проверяем, существует ли уже такой номер
-	existing, err := s.orderRepo.FindByNumber(ctx, numberStr)
+	if !luhn.Valid(num) {
+		return nil, ErrInvalidOrderNumber
+	}
+	existing, err := s.orderRepo.FindByNumber(ctx, orderNumber)
 	if err != nil && !errors.Is(err, storage.ErrOrderNotFound) {
 		return nil, fmt.Errorf("check existing: %w", err)
 	}
 	if existing != nil {
 		if existing.UserID == userID {
-			// Уже загружен этим пользователем – возвращаем его (код 200)
 			return existing, ErrOrderAlreadyUploadedByUser
 		}
-		// Загружен другим пользователем – конфликт
 		return nil, ErrOrderConflict
 	}
-
-	// 3. Создаём запись заказа со статусом NEW
 	order := &models.Order{
 		UserID:     userID,
-		Number:     numberStr,
+		Number:     orderNumber,
 		Status:     models.StatusNew,
 		UploadedAt: time.Now(),
 		UpdatedAt:  time.Now(),
@@ -71,36 +70,22 @@ func (s *orderService) UploadOrder(ctx context.Context, userID int64, number int
 	if err := s.orderRepo.Create(ctx, order); err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}
-
-	// 4. Синхронно пробуем получить информацию из внешнего сервиса
-	// (если сервис недоступен, заказ останется в NEW и будет обработан воркером)
 	go func() {
-		// Используем новый контекст, чтобы не зависеть от контекста запроса
 		ctxBg := context.Background()
-		s.processOrder(ctxBg, order.ID, numberStr)
+		s.processOrder(ctxBg, order.ID, orderNumber)
 	}()
-
 	return order, nil
 }
 
-func (s *orderService) GetUserOrders(ctx context.Context, userID int64) ([]*models.Order, error) {
-	orders, err := s.orderRepo.FindByUserID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get user orders: %w", err)
-	}
-	return orders, nil
+func (s *orderService) GetUserOrders(ctx context.Context, userID uuid.UUID) ([]*models.Order, error) {
+	return s.orderRepo.FindByUserID(ctx, userID)
 }
 
-// processOrder — вызывает внешний сервис и обновляет статус
-func (s *orderService) processOrder(ctx context.Context, orderID int64, number string) {
+func (s *orderService) processOrder(ctx context.Context, orderID uuid.UUID, number string) {
 	resp, err := s.accrualClient.CheckOrder(ctx, number)
 	if err != nil {
-		// Если ошибка, заказ остаётся в текущем статусе (NEW или PROCESSING)
-		// Можно залогировать
 		return
 	}
-
-	// Маппинг статусов внешнего сервиса на наши
 	var newStatus models.OrderStatus
 	var accrual *float64
 	switch resp.Status {
@@ -115,13 +100,9 @@ func (s *orderService) processOrder(ctx context.Context, orderID int64, number s
 	default:
 		newStatus = models.StatusNew
 	}
-
-	if err := s.orderRepo.UpdateStatusAndAccrual(ctx, orderID, newStatus, accrual); err != nil {
-		// Логируем ошибку
-	}
+	_ = s.orderRepo.UpdateStatusAndAccrual(ctx, orderID, newStatus, accrual)
 }
 
-// ProcessPendingOrders — для фонового воркера, обрабатывает заказы со статусами NEW и PROCESSING
 func (s *orderService) ProcessPendingOrders(ctx context.Context, limit int) error {
 	orders, err := s.orderRepo.FindPendingOrders(ctx, limit)
 	if err != nil {

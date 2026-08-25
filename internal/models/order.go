@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // OrderStatus — возможные статусы заказа
 type OrderStatus string
@@ -14,8 +18,8 @@ const (
 
 // Order — модель заказа
 type Order struct {
-	ID         int64       `json:"-"`
-	UserID     int64       `json:"-"`
+	ID         uuid.UUID   `json:"-"`
+	UserID     uuid.UUID   `json:"-"`
 	Number     string      `json:"number"`
 	Status     OrderStatus `json:"status"`
 	Accrual    *float64    `json:"accrual,omitempty"` // nil, если не начислено

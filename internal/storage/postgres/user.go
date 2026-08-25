@@ -8,6 +8,7 @@ import (
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,11 +23,12 @@ func NewUserRepository(pool *pgxpool.Pool) storage.UserRepository {
 }
 
 func (r *userRepo) Create(ctx context.Context, user *models.User) error {
-	query := `INSERT INTO users (login, password_hash) VALUES ($1, $2) RETURNING id`
-	err := r.pool.QueryRow(ctx, query, user.Login, user.PasswordHash).Scan(&user.ID)
+	user.ID = uuid.New()
+	query := `INSERT INTO users (id, login, password_hash) VALUES ($1, $2, $3)`
+	_, err := r.pool.Exec(ctx, query, user.ID, user.Login, user.PasswordHash)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // dublicate error
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return storage.ErrUserExists
 		}
 		return fmt.Errorf("create user: %w", err)

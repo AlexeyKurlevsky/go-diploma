@@ -9,19 +9,18 @@ import (
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthService — интерфейс для работы с аутентификацией
 type AuthService interface {
-	Register(ctx context.Context, login, password string) (token string, userID int64, err error)
-	Login(ctx context.Context, login, password string) (token string, userID int64, err error)
-	ValidateToken(tokenString string) (userID int64, err error)
+	Register(ctx context.Context, login, password string) (token string, userID uuid.UUID, err error)
+	Login(ctx context.Context, login, password string) (token string, userID uuid.UUID, err error)
+	ValidateToken(tokenString string) (userID uuid.UUID, err error)
 }
 
-// Кастомные claims с полем user_id
 type Claims struct {
-	UserID int64 `json:"user_id"`
+	UserID uuid.UUID `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
@@ -39,76 +38,61 @@ func NewAuthService(userRepo storage.UserRepository, jwtSecret string, tokenExpi
 	}
 }
 
-// Register — регистрация нового пользователя
-func (s *authService) Register(ctx context.Context, login, password string) (string, int64, error) {
+func (s *authService) Register(ctx context.Context, login, password string) (string, uuid.UUID, error) {
 	if login == "" || password == "" {
-		return "", 0, ErrInvalidCredentials
+		return "", uuid.Nil, ErrInvalidCredentials
 	}
-
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return "", 0, err
+		return "", uuid.Nil, err
 	}
-
 	user := &models.User{
 		Login:        login,
 		PasswordHash: hash,
 	}
-
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		if errors.Is(err, storage.ErrUserExists) {
-			return "", 0, ErrLoginAlreadyTaken
+			return "", uuid.Nil, ErrLoginAlreadyTaken
 		}
-		return "", 0, err
+		return "", uuid.Nil, err
 	}
-
 	token, err := s.generateToken(user.ID)
 	if err != nil {
-		return "", 0, err
+		return "", uuid.Nil, err
 	}
-
 	return token, user.ID, nil
 }
 
-// Login — аутентификация пользователя
-func (s *authService) Login(ctx context.Context, login, password string) (string, int64, error) {
+func (s *authService) Login(ctx context.Context, login, password string) (string, uuid.UUID, error) {
 	user, err := s.userRepo.FindByLogin(ctx, login)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
-			return "", 0, ErrInvalidCredentials
+			return "", uuid.Nil, ErrInvalidCredentials
 		}
-		return "", 0, err
+		return "", uuid.Nil, err
 	}
-
 	if err := bcrypt.CompareHashAndPassword(user.PasswordHash, []byte(password)); err != nil {
-		return "", 0, ErrInvalidCredentials
+		return "", uuid.Nil, ErrInvalidCredentials
 	}
-
 	token, err := s.generateToken(user.ID)
 	if err != nil {
-		return "", 0, err
+		return "", uuid.Nil, err
 	}
-
 	return token, user.ID, nil
 }
 
-// ValidateToken — проверка JWT и извлечение userID
-func (s *authService) ValidateToken(tokenString string) (int64, error) {
+func (s *authService) ValidateToken(tokenString string) (uuid.UUID, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
 		return s.jwtSecret, nil
 	})
-	if err != nil {
-		return 0, ErrInvalidToken
-	}
-	if !token.Valid {
-		return 0, ErrInvalidToken
+	if err != nil || !token.Valid {
+		return uuid.Nil, ErrInvalidToken
 	}
 	return claims.UserID, nil
 }
 
-// generateToken — создание нового JWT
-func (s *authService) generateToken(userID int64) (string, error) {
+func (s *authService) generateToken(userID uuid.UUID) (string, error) {
 	claims := &Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{

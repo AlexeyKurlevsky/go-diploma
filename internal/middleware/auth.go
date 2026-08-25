@@ -6,13 +6,14 @@ import (
 	"strings"
 
 	"github.com/AlexeyKurlevsky/go-diploma/internal/service"
+
+	"github.com/google/uuid"
 )
 
 type contextKey string
 
 const UserIDKey contextKey = "userID"
 
-// AuthMiddleware проверяет JWT в заголовке Authorization.
 func AuthMiddleware(authService service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,29 +22,24 @@ func AuthMiddleware(authService service.AuthService) func(http.Handler) http.Han
 				http.Error(w, "missing authorization header", http.StatusUnauthorized)
 				return
 			}
-
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 				http.Error(w, "invalid authorization header format", http.StatusUnauthorized)
 				return
 			}
-
 			tokenString := parts[1]
 			userID, err := authService.ValidateToken(tokenString)
 			if err != nil {
 				http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 				return
 			}
-
-			// Кладём userID в контекст запроса
 			ctx := context.WithValue(r.Context(), UserIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// GetUserID извлекает userID из контекста.
-func GetUserID(ctx context.Context) (int64, bool) {
-	id, ok := ctx.Value(UserIDKey).(int64)
+func GetUserID(ctx context.Context) (uuid.UUID, bool) {
+	id, ok := ctx.Value(UserIDKey).(uuid.UUID)
 	return id, ok
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -20,12 +21,12 @@ func NewBalanceRepository(pool *pgxpool.Pool) storage.BalanceRepository {
 	return &balanceRepo{pool: pool}
 }
 
-func (r *balanceRepo) GetByUserID(ctx context.Context, userID int64) (*models.UserBalance, error) {
+func (r *balanceRepo) GetByUserID(ctx context.Context, userID uuid.UUID) (*models.UserBalance, error) {
 	query := `
-		SELECT user_id, balance, total_accrued, total_withdrawn
-		FROM user_balance
-		WHERE user_id = $1
-	`
+        SELECT user_id, balance, total_accrued, total_withdrawn
+        FROM user_balance
+        WHERE user_id = $1
+    `
 	var balance models.UserBalance
 	err := r.pool.QueryRow(ctx, query, userID).Scan(
 		&balance.UserID,
@@ -35,7 +36,6 @@ func (r *balanceRepo) GetByUserID(ctx context.Context, userID int64) (*models.Us
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// Если пользователь ещё не имеет записей, возвращаем нулевой баланс
 			return &models.UserBalance{
 				UserID:         userID,
 				Balance:        0,
