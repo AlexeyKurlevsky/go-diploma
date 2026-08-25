@@ -1,8 +1,6 @@
 package config
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"flag"
 	"log"
 	"time"
@@ -17,7 +15,6 @@ type Config struct {
 	LogLevel      string `env:"LOG"`
 	DatabaseURI   string `env:"DATABASE_URI"`
 	JWTSecret     string `env:"JWT_SECRET_KEY"`
-	SecretKeyByte []byte
 	JWTExpire     int64
 	JWTExpireTime time.Duration
 }
@@ -34,7 +31,7 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&cfg.AccrualAddr, "r", "http://localhost:8080", "addres for accural system")
 	flag.StringVar(&cfg.LogLevel, "l", "info", "log level")
 	flag.StringVar(&cfg.DatabaseURI, "d", "", "DB URI")
-	flag.StringVar(&cfg.JWTSecret, "s", "", "secret key for cookie signing (base64)")
+	flag.StringVar(&cfg.JWTSecret, "s", "supersecretkey", "secret key for cookie signing (base64)")
 	flag.Int64Var(&cfg.JWTExpire, "e", 3600, "expire time for token")
 	flag.Parse()
 
@@ -43,20 +40,6 @@ func NewConfig() (*Config, error) {
 	}
 
 	cfg.JWTExpireTime = time.Duration(cfg.JWTExpire) * time.Second
-
-	if cfg.JWTSecret != "" {
-		key, err := base64.StdEncoding.DecodeString(cfg.JWTSecret)
-		if err != nil {
-			return nil, err
-		}
-		cfg.SecretKeyByte = key
-	} else {
-		key := make([]byte, 32)
-		if _, err := rand.Read(key); err != nil {
-			return nil, err
-		}
-		cfg.SecretKeyByte = key
-	}
 
 	return cfg, nil
 }

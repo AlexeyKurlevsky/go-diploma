@@ -26,7 +26,7 @@ func (r *userRepo) Create(ctx context.Context, user *models.User) error {
 	err := r.pool.QueryRow(ctx, query, user.Login, user.PasswordHash).Scan(&user.ID)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // dublicate error
 			return storage.ErrUserExists
 		}
 		return fmt.Errorf("create user: %w", err)

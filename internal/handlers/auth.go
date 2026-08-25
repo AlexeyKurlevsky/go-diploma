@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
@@ -32,6 +33,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		case service.ErrLoginAlreadyTaken:
 			http.Error(w, "login already taken", http.StatusConflict)
 		default:
+			log.Printf("registration error: %v", err)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 		}
 		return
