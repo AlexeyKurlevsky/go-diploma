@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -31,12 +32,18 @@ type OrderService interface {
 type orderService struct {
 	orderRepo     storage.OrderRepository
 	accrualClient client.AccrualClient
+	balanceRepo   storage.BalanceRepository // добавили
 }
 
-func NewOrderService(orderRepo storage.OrderRepository, accrualClient client.AccrualClient) OrderService {
+func NewOrderService(
+	orderRepo storage.OrderRepository,
+	accrualClient client.AccrualClient,
+	balanceRepo storage.BalanceRepository,
+) OrderService {
 	return &orderService{
 		orderRepo:     orderRepo,
 		accrualClient: accrualClient,
+		balanceRepo:   balanceRepo,
 	}
 }
 
@@ -70,6 +77,7 @@ func (s *orderService) UploadOrder(ctx context.Context, userID uuid.UUID, orderN
 	if err := s.orderRepo.Create(ctx, order); err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}
+	// Запускаем обработку в фоне
 	go func() {
 		ctxBg := context.Background()
 		s.processOrder(ctxBg, order.ID, orderNumber)
@@ -81,11 +89,27 @@ func (s *orderService) GetUserOrders(ctx context.Context, userID uuid.UUID) ([]*
 	return s.orderRepo.FindByUserID(ctx, userID)
 }
 
+func (s *orderService) ProcessPendingOrders(ctx context.Context, limit int) error {
+	orders, err := s.orderRepo.FindPendingOrders(ctx, limit)
+	if err != nil {
+		return fmt.Errorf("find pending: %w", err)
+	}
+	if len(orders) > 0 {
+		log.Printf("Processing %d pending orders", len(orders))
+	}
+	for _, order := range orders {
+		s.processOrder(ctx, order.ID, order.Number)
+	}
+	return nil
+}
+
 func (s *orderService) processOrder(ctx context.Context, orderID uuid.UUID, number string) {
 	resp, err := s.accrualClient.CheckOrder(ctx, number)
 	if err != nil {
+		log.Printf("Accrual check error for order %s: %v", number, err)
 		return
 	}
+
 	var newStatus models.OrderStatus
 	var accrual *float64
 	switch resp.Status {
@@ -97,19 +121,22 @@ func (s *orderService) processOrder(ctx context.Context, orderID uuid.UUID, numb
 	case StatusProcessed:
 		newStatus = models.StatusProcessed
 		accrual = resp.Accrual
+		log.Printf("Order %s processed, accrual: %v", number, accrual)
 	default:
 		newStatus = models.StatusNew
 	}
-	_ = s.orderRepo.UpdateStatusAndAccrual(ctx, orderID, newStatus, accrual)
-}
 
-func (s *orderService) ProcessPendingOrders(ctx context.Context, limit int) error {
-	orders, err := s.orderRepo.FindPendingOrders(ctx, limit)
-	if err != nil {
-		return fmt.Errorf("find pending: %w", err)
+	if err := s.orderRepo.UpdateStatusAndAccrual(ctx, orderID, newStatus, accrual); err != nil {
+		log.Printf("Update order error: %v", err)
+		return
 	}
-	for _, order := range orders {
-		s.processOrder(ctx, order.ID, order.Number)
+
+	// Если заказ обработан – обновляем материализованное представление для баланса
+	if newStatus == models.StatusProcessed {
+		if err := s.balanceRepo.RefreshMaterializedView(ctx); err != nil {
+			log.Printf("Failed to refresh balance view: %v", err)
+		} else {
+			log.Printf("Balance view refreshed after order %s", number)
+		}
 	}
-	return nil
 }

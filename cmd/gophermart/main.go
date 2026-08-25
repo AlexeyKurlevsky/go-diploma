@@ -43,7 +43,7 @@ func main() {
 	// Инициализация сервисов
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpireTime)
 	accrualClient := client.NewAccrualClient(cfg.AccrualAddr, 10*time.Second)
-	orderService := service.NewOrderService(orderRepo, accrualClient)
+	orderService := service.NewOrderService(orderRepo, accrualClient, balanceRepo)
 	balanceService := service.NewBalanceService(balanceRepo, withdrawalRepo)
 
 	// Инициализация хендлеров
