@@ -35,7 +35,6 @@ func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
 		return nil, fmt.Errorf("failed to ping DB: %w", err)
 	}
 	log.Println("successfuly connect to db")
-	defer pool.Close()
 	log.Println("Running database migrations...")
 	if err := runMigrations(pool); err != nil {
 		log.Fatalf("Migration failed: %v", err)

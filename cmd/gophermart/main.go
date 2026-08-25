@@ -32,6 +32,7 @@ func main() {
 	if err != nil {
 		log.Fatal("failed to connect to DB:", err)
 	}
+	defer db.Pool.Close()
 
 	// Инициализация репозиториев
 	userRepo := storage.NewUserRepository(db.Pool)
