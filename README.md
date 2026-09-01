@@ -1,25 +1,34 @@
-# go-musthave-diploma-tpl
+# Gophermart
 
-Шаблон репозитория для индивидуального дипломного проекта курса «Go-разработчик»
+Pet project сервиса накопительной системы магазина. 
 
-# Начало работы
+## Схема БД
 
-1. Склонируйте репозиторий в любую подходящую директорию на вашем компьютере.
-2. В корне репозитория выполните команду `go mod init <name>` (где `<name>` — адрес вашего репозитория на GitHub без
-   префикса `https://`) для создания модуля
+<img src="./docs/db_schema.png" alt="tg" alt="Medium" width="50%">
 
-# Обновление шаблона
+## Описание таблиц
 
-Чтобы иметь возможность получать обновления автотестов и других частей шаблона, выполните команду:
+В таблице users хранятся данные о пользователях. Она связана с другими таблицами связью 1 ко многим. В таблице orders информациях о заказах пользователя. Поле accrual (рассчитанные баллы) обновляется, когда мы получаем, что расчет заказа окончен. Таблица withdrawals - информация о списаниях средств. Здесь хранится история списаний. Для подсчета баланса баллов пользователей создал mat. view:
 
+```sql
+CREATE MATERIALIZED VIEW IF NOT EXISTS user_balance AS
+SELECT
+    u.id AS user_id,
+    COALESCE(SUM(o.accrual), 0) - COALESCE(SUM(w.amount), 0) AS balance,
+    COALESCE(SUM(o.accrual), 0) AS total_accrued,
+    COALESCE(SUM(w.amount), 0) AS total_withdrawn
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id AND o.status = 'PROCESSED'  -- только подтверждённые заказы
+LEFT JOIN withdrawals w ON u.id = w.user_id
+GROUP BY u.id;
+CREATE UNIQUE INDEX idx_user_balance_user_id ON user_balance (user_id);
 ```
-git remote add -m master template https://github.com/yandex-praktikum/go-musthave-diploma-tpl.git
-```
 
-Для обновления кода автотестов выполните команду:
+Когда обновляю view:
 
-```
-git fetch template && git checkout template/master .github
-```
+1. Когда статус обработки заказа выполнен.
+2. Когда произошло списание средств
+3. Фоновое обновление кажде 30 секунд
 
-Затем добавьте полученные изменения в свой репозиторий.
+
+С помощью горутин реализовал обновление view и обработку заказа.
