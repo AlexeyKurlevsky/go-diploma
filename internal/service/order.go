@@ -130,13 +130,4 @@ func (s *orderService) processOrder(ctx context.Context, orderID uuid.UUID, numb
 		log.Printf("Update order error: %v", err)
 		return
 	}
-
-	// Если заказ обработан – обновляем материализованное представление для баланса
-	if newStatus == models.StatusProcessed {
-		if err := s.balanceRepo.RefreshMaterializedView(ctx); err != nil {
-			log.Printf("Failed to refresh balance view: %v", err)
-		} else {
-			log.Printf("Balance view refreshed after order %s", number)
-		}
-	}
 }

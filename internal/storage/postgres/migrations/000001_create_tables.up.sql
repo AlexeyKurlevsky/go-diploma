@@ -25,16 +25,3 @@ CREATE TABLE IF NOT EXISTS withdrawals (
     processed_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON withdrawals(user_id);
-
--- Материализованное представление, вычисляющее текущий баланс каждого пользователя
-CREATE MATERIALIZED VIEW IF NOT EXISTS user_balance AS
-SELECT
-    u.id AS user_id,
-    COALESCE(SUM(o.accrual), 0) - COALESCE(SUM(w.amount), 0) AS balance,
-    COALESCE(SUM(o.accrual), 0) AS total_accrued,
-    COALESCE(SUM(w.amount), 0) AS total_withdrawn
-FROM users u
-LEFT JOIN orders o ON u.id = o.user_id AND o.status = 'PROCESSED'  -- только подтверждённые заказы
-LEFT JOIN withdrawals w ON u.id = w.user_id
-GROUP BY u.id;
-CREATE UNIQUE INDEX idx_user_balance_user_id ON user_balance (user_id);

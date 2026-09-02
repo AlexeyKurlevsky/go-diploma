@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"time"
@@ -53,19 +52,6 @@ func main() {
 
 	// Роутер
 	r := router.NewRouter(authHandler, orderHandler, balanceHandler, authService)
-
-	// Фоновый воркер для обновления MV с балансом
-	go func() {
-		ticker := time.NewTicker(30 * time.Second) // обновляем каждые 30 секунд
-		defer ticker.Stop()
-		for range ticker.C {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if err := balanceService.RefreshBalanceView(ctx); err != nil {
-				log.Printf("failed to refresh balance view: %v", err)
-			}
-			cancel()
-		}
-	}()
 
 	logger.Log.Info("Config",
 		zap.String("ServerAddr", cfg.ServerAddr),

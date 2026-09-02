@@ -17,7 +17,6 @@ type BalanceService interface {
 	GetBalance(ctx context.Context, userID uuid.UUID) (current float64, withdrawn float64, err error)
 	Withdraw(ctx context.Context, userID uuid.UUID, orderNumber string, amount float64) error
 	GetWithdrawals(ctx context.Context, userID uuid.UUID) ([]*models.Withdrawal, error)
-	RefreshBalanceView(ctx context.Context) error
 }
 
 type balanceService struct {
@@ -69,17 +68,9 @@ func (s *balanceService) Withdraw(ctx context.Context, userID uuid.UUID, orderNu
 	if err := s.withdrawalRepo.Create(ctx, withdrawal); err != nil {
 		return fmt.Errorf("create withdrawal: %w", err)
 	}
-	go func() {
-		ctxBg := context.Background()
-		_ = s.balanceRepo.RefreshMaterializedView(ctxBg)
-	}()
 	return nil
 }
 
 func (s *balanceService) GetWithdrawals(ctx context.Context, userID uuid.UUID) ([]*models.Withdrawal, error) {
 	return s.withdrawalRepo.FindByUserID(ctx, userID)
-}
-
-func (s *balanceService) RefreshBalanceView(ctx context.Context) error {
-	return s.balanceRepo.RefreshMaterializedView(ctx)
 }

@@ -23,9 +23,19 @@ func NewBalanceRepository(pool *pgxpool.Pool) storage.BalanceRepository {
 
 func (r *balanceRepo) GetByUserID(ctx context.Context, userID uuid.UUID) (*models.UserBalance, error) {
 	query := `
-        SELECT user_id, balance, total_accrued, total_withdrawn
-        FROM user_balance
-        WHERE user_id = $1
+	SELECT
+    $1 AS user_id,
+    COALESCE(
+        (SELECT SUM(accrual) FROM orders WHERE user_id = $1 AND status = 'PROCESSED'), 0
+    ) - COALESCE(
+        (SELECT SUM(amount) FROM withdrawals WHERE user_id = $1), 0
+    ) AS balance,
+    COALESCE(
+        (SELECT SUM(accrual) FROM orders WHERE user_id = $1 AND status = 'PROCESSED'), 0
+    ) AS total_accrued,
+    COALESCE(
+        (SELECT SUM(amount) FROM withdrawals WHERE user_id = $1), 0
+    ) AS total_withdrawn;
     `
 	var balance models.UserBalance
 	err := r.pool.QueryRow(ctx, query, userID).Scan(
@@ -46,13 +56,4 @@ func (r *balanceRepo) GetByUserID(ctx context.Context, userID uuid.UUID) (*model
 		return nil, fmt.Errorf("get balance: %w", err)
 	}
 	return &balance, nil
-}
-
-func (r *balanceRepo) RefreshMaterializedView(ctx context.Context) error {
-	query := `REFRESH MATERIALIZED VIEW CONCURRENTLY user_balance`
-	_, err := r.pool.Exec(ctx, query)
-	if err != nil {
-		return fmt.Errorf("refresh mv: %w", err)
-	}
-	return nil
 }

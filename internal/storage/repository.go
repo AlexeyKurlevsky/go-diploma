@@ -37,5 +37,4 @@ type WithdrawalRepository interface {
 
 type BalanceRepository interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*models.UserBalance, error)
-	RefreshMaterializedView(ctx context.Context) error
 }
