@@ -6,3 +6,6 @@ migrate:
 
 generate_mock:
 	mockgen -source=internal/storage/repository.go -destination=internal/storage/mocks/mocks.go -package=mocks
+
+test:
+	go test -v ./...

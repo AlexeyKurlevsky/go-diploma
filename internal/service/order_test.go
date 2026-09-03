@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/AlexeyKurlevsky/go-diploma/internal/client/mocks"
+	"github.com/AlexeyKurlevsky/go-diploma/internal/client"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 
@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	mock_client "github.com/AlexeyKurlevsky/go-diploma/internal/client/mocks"
 
 	mock_storage "github.com/AlexeyKurlevsky/go-diploma/internal/storage/mocks"
 )
@@ -21,7 +23,7 @@ func TestOrderService_UploadOrder(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockOrderRepo := mock_storage.NewMockOrderRepository(ctrl)
-	mockAccrualClient := mocks.NewMockAccrualClient(ctrl)
+	mockAccrualClient := mock_client.NewMockAccrualClient(ctrl)
 	mockBalanceRepo := mock_storage.NewMockBalanceRepository(ctrl)
 
 	orderService := NewOrderService(mockOrderRepo, mockAccrualClient, mockBalanceRepo)
@@ -29,13 +31,22 @@ func TestOrderService_UploadOrder(t *testing.T) {
 	userID := uuid.New()
 
 	t.Run("successful upload", func(t *testing.T) {
-		orderNumber := "12345678903" // валидный по Луне
+		orderNumber := "12345678903"
 		mockOrderRepo.EXPECT().
 			FindByNumber(ctx, orderNumber).
 			Return(nil, storage.ErrOrderNotFound)
 		mockOrderRepo.EXPECT().
 			Create(ctx, gomock.Any()).
 			Return(nil)
+		// Разрешаем вызов CheckOrder (асинхронный)
+		mockAccrualClient.EXPECT().
+			CheckOrder(gomock.Any(), orderNumber).
+			Return(&client.AccrualResponse{
+				Order:   orderNumber,
+				Status:  "REGISTERED",
+				Accrual: nil,
+			}, nil).
+			AnyTimes()
 
 		order, err := orderService.UploadOrder(ctx, userID, orderNumber)
 		require.NoError(t, err)
