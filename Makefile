@@ -8,4 +8,5 @@ generate_mock:
 	mockgen -source=internal/storage/repository.go -destination=internal/storage/mocks/mocks.go -package=mocks
 
 test:
-	go test -v ./...
+	go test -v ./... -cover -coverprofile=coverage.out
+	go tool cover -func=coverage.out

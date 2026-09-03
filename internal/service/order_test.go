@@ -38,7 +38,6 @@ func TestOrderService_UploadOrder(t *testing.T) {
 		mockOrderRepo.EXPECT().
 			Create(ctx, gomock.Any()).
 			Return(nil)
-		// Разрешаем вызов CheckOrder (асинхронный)
 		mockAccrualClient.EXPECT().
 			CheckOrder(gomock.Any(), orderNumber).
 			Return(&client.AccrualResponse{
@@ -46,6 +45,10 @@ func TestOrderService_UploadOrder(t *testing.T) {
 				Status:  "REGISTERED",
 				Accrual: nil,
 			}, nil).
+			AnyTimes()
+		// Разрешаем вызов UpdateStatusAndAccrual в фоновой горутине
+		mockOrderRepo.EXPECT().
+			UpdateStatusAndAccrual(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			AnyTimes()
 
 		order, err := orderService.UploadOrder(ctx, userID, orderNumber)
