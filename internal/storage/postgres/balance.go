@@ -23,19 +23,27 @@ func NewBalanceRepository(pool *pgxpool.Pool) storage.BalanceRepository {
 
 func (r *balanceRepo) GetByUserID(ctx context.Context, userID uuid.UUID) (*models.UserBalance, error) {
 	query := `
+	WITH order_agg AS (
+		SELECT user_id, SUM(accrual) AS total_accrued
+		FROM orders
+		WHERE status = 'PROCESSED' AND user_id = $1
+		GROUP BY user_id
+	),
+	withdrawal_agg AS (
+		SELECT user_id, SUM(amount) AS total_withdrawn
+		FROM withdrawals
+		WHERE user_id = $1
+		GROUP BY user_id
+	)
 	SELECT
-    $1 AS user_id,
-    COALESCE(
-        (SELECT SUM(accrual) FROM orders WHERE user_id = $1 AND status = 'PROCESSED'), 0
-    ) - COALESCE(
-        (SELECT SUM(amount) FROM withdrawals WHERE user_id = $1), 0
-    ) AS balance,
-    COALESCE(
-        (SELECT SUM(accrual) FROM orders WHERE user_id = $1 AND status = 'PROCESSED'), 0
-    ) AS total_accrued,
-    COALESCE(
-        (SELECT SUM(amount) FROM withdrawals WHERE user_id = $1), 0
-    ) AS total_withdrawn;
+		u.id AS user_id,
+		COALESCE(oa.total_accrued, 0) - COALESCE(wa.total_withdrawn, 0) AS balance,
+		COALESCE(oa.total_accrued, 0) AS total_accrued,
+		COALESCE(wa.total_withdrawn, 0) AS total_withdrawn
+	FROM users u
+	LEFT JOIN order_agg oa ON u.id = oa.user_id
+	LEFT JOIN withdrawal_agg wa ON u.id = wa.user_id
+	WHERE u.id = $1;
     `
 	var balance models.UserBalance
 	err := r.pool.QueryRow(ctx, query, userID).Scan(
