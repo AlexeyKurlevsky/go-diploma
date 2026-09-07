@@ -22,6 +22,25 @@ func NewOrderRepository(pool *pgxpool.Pool) storage.OrderRepository {
 	return &orderRepo{pool: pool}
 }
 
+func scanOrder(rows pgx.Rows) (*models.Order, error) {
+	o := &models.Order{}
+	var accrual *float64
+	err := rows.Scan(
+		&o.ID,
+		&o.UserID,
+		&o.Number,
+		&o.Status,
+		&accrual,
+		&o.UploadedAt,
+		&o.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	o.Accrual = accrual
+	return o, nil
+}
+
 func (r *orderRepo) Create(ctx context.Context, order *models.Order) error {
 	order.ID = uuid.New()
 	query := `
@@ -74,38 +93,21 @@ func (r *orderRepo) FindByNumber(ctx context.Context, number string) (*models.Or
 }
 
 func (r *orderRepo) FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Order, error) {
-	query := `
-        SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
-        FROM orders
-        WHERE user_id = $1
-        ORDER BY uploaded_at DESC
-    `
+	query := `SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
+	          FROM orders WHERE user_id = $1 ORDER BY uploaded_at DESC`
 	rows, err := r.pool.Query(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("find by user: %w", err)
 	}
-	defer rows.Close()
 
 	var orders []*models.Order
-	for rows.Next() {
-		order := &models.Order{}
-		var accrual *float64
-		err := rows.Scan(
-			&order.ID,
-			&order.UserID,
-			&order.Number,
-			&order.Status,
-			&accrual,
-			&order.UploadedAt,
-			&order.UpdatedAt,
-		)
+	for order, err := range storage.RowsIter(rows, scanOrder) {
 		if err != nil {
 			return nil, fmt.Errorf("scan order: %w", err)
 		}
-		order.Accrual = accrual
 		orders = append(orders, order)
 	}
-	return orders, rows.Err()
+	return orders, nil
 }
 
 func (r *orderRepo) UpdateStatusAndAccrual(ctx context.Context, orderID uuid.UUID, status models.OrderStatus, accrual *float64) error {
@@ -122,37 +124,19 @@ func (r *orderRepo) UpdateStatusAndAccrual(ctx context.Context, orderID uuid.UUI
 }
 
 func (r *orderRepo) FindPendingOrders(ctx context.Context, limit int) ([]*models.Order, error) {
-	query := `
-        SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
-        FROM orders
-        WHERE status IN ($1, $2)
-        ORDER BY uploaded_at ASC
-        LIMIT $3
-    `
+	query := `SELECT id, user_id, number, status, accrual, uploaded_at, updated_at
+	          FROM orders WHERE status IN ($1, $2) ORDER BY uploaded_at ASC LIMIT $3`
 	rows, err := r.pool.Query(ctx, query, models.StatusNew, models.StatusProcessing, limit)
 	if err != nil {
 		return nil, fmt.Errorf("find pending: %w", err)
 	}
-	defer rows.Close()
 
 	var orders []*models.Order
-	for rows.Next() {
-		order := &models.Order{}
-		var accrual *float64
-		err := rows.Scan(
-			&order.ID,
-			&order.UserID,
-			&order.Number,
-			&order.Status,
-			&accrual,
-			&order.UploadedAt,
-			&order.UpdatedAt,
-		)
+	for order, err := range storage.RowsIter(rows, scanOrder) {
 		if err != nil {
 			return nil, fmt.Errorf("scan pending: %w", err)
 		}
-		order.Accrual = accrual
 		orders = append(orders, order)
 	}
-	return orders, rows.Err()
+	return orders, nil
 }

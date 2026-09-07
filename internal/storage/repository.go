@@ -3,8 +3,10 @@ package storage
 import (
 	"context"
 	"errors"
+	"iter"
 
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/google/uuid"
 )
@@ -37,4 +39,24 @@ type WithdrawalRepository interface {
 
 type BalanceRepository interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) (*models.UserBalance, error)
+}
+
+func RowsIter[T any](rows pgx.Rows, scan func(pgx.Rows) (T, error)) iter.Seq2[T, error] {
+	return func(yield func(T, error) bool) {
+		defer rows.Close()
+		var zero T
+		for rows.Next() {
+			val, err := scan(rows)
+			if err != nil {
+				yield(zero, err)
+				return
+			}
+			if !yield(val, nil) {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			yield(zero, err)
+		}
+	}
 }

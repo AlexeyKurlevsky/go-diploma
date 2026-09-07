@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -53,7 +53,7 @@ func (r *balanceRepo) GetByUserID(ctx context.Context, userID uuid.UUID) (*model
 		&balance.TotalWithdrawn,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return &models.UserBalance{
 				UserID:         userID,
 				Balance:        0,
