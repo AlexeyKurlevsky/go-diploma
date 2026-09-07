@@ -12,7 +12,6 @@ import (
 	router "github.com/AlexeyKurlevsky/go-diploma/internal/server"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/service"
 	storage "github.com/AlexeyKurlevsky/go-diploma/internal/storage/postgres"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -54,10 +53,12 @@ func main() {
 	r := router.NewRouter(authHandler, orderHandler, balanceHandler, authService)
 
 	logger.Log.Info("Config",
-		zap.String("ServerAddr", cfg.ServerAddr),
+		"ServerAddr", cfg.ServerAddr,
 	)
 
 	if err := http.ListenAndServe(cfg.ServerAddr, r); err != nil {
-		logger.Log.Fatal("Server failed: %v", zap.Error(err))
+		logger.Log.Fatal("Server failed",
+			"error", err,
+		)
 	}
 }

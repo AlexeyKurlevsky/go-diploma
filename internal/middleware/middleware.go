@@ -1,12 +1,12 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/AlexeyKurlevsky/go-diploma/internal/logger"
-	"go.uber.org/zap"
 )
 
 func GzipMiddleware(next http.Handler) http.Handler {
@@ -45,21 +45,21 @@ func GzipMiddleware(next http.Handler) http.Handler {
 func RequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-
 		rw := &logger.MyResponseWriter{
 			ResponseWriter: w,
 			Status:         http.StatusOK,
 		}
 
+		// Обрабатываем запрос
 		next.ServeHTTP(rw, r)
 
-		// Log all required details.
-		logger.Log.Info("HTTP request",
-			zap.String("method", r.Method),
-			zap.String("uri", r.URL.RequestURI()),
-			zap.Duration("duration", time.Since(start)),
-			zap.Int("status", rw.Status),
-			zap.Int("response_size", rw.Size),
+		// Логируем все необходимые поля
+		slog.Info("HTTP request",
+			"method", r.Method,
+			"uri", r.URL.RequestURI(),
+			"duration", time.Since(start),
+			"status", rw.Status,
+			"response_size", rw.Size,
 		)
 	})
 }
