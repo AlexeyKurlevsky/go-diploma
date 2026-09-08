@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -55,6 +56,21 @@ func main() {
 	logger.Log.Info("Config",
 		"ServerAddr", cfg.ServerAddr,
 	)
+
+	// Фоновый воркер для обработки заказов
+	// Нужен для обработки заказов в PENDING и при ошибках от внешнего сервиса
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Обрабатываем до 100 заказов за раз
+			if err := orderService.ProcessPendingOrders(ctx, 100); err != nil {
+				log.Printf("Worker error: %v", err)
+			}
+			cancel()
+		}
+	}()
 
 	if err := http.ListenAndServe(cfg.ServerAddr, r); err != nil {
 		logger.Log.Fatal("Server failed",
