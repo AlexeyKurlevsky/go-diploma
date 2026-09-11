@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const RetrySeconds = 10
+
 type AccrualClient interface {
 	CheckOrder(ctx context.Context, orderNumber string) (*AccrualResponse, error)
 }
@@ -66,7 +68,7 @@ func (c *accrualClient) CheckOrder(ctx context.Context, orderNumber string) (*Ac
 
 	case http.StatusTooManyRequests:
 		// Разбираем Retry-After (может быть в секундах или HTTP-дате)
-		retryAfter := 10 * time.Second // значение по умолчанию
+		retryAfter := RetrySeconds * time.Second // значение по умолчанию
 		if v := resp.Header.Get("Retry-After"); v != "" {
 			if secs, err := strconv.Atoi(v); err == nil {
 				retryAfter = time.Duration(secs) * time.Second
