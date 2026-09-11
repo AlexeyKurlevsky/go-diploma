@@ -206,6 +206,20 @@ func (mr *MockWithdrawalRepositoryMockRecorder) Create(ctx, withdrawal any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockWithdrawalRepository)(nil).Create), ctx, withdrawal)
 }
 
+// CreateWithBalanceCheck mocks base method.
+func (m *MockWithdrawalRepository) CreateWithBalanceCheck(ctx context.Context, w *models.Withdrawal) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateWithBalanceCheck", ctx, w)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateWithBalanceCheck indicates an expected call of CreateWithBalanceCheck.
+func (mr *MockWithdrawalRepositoryMockRecorder) CreateWithBalanceCheck(ctx, w any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWithBalanceCheck", reflect.TypeOf((*MockWithdrawalRepository)(nil).CreateWithBalanceCheck), ctx, w)
+}
+
 // FindByUserID mocks base method.
 func (m *MockWithdrawalRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Withdrawal, error) {
 	m.ctrl.T.Helper()

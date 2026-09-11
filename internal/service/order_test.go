@@ -24,9 +24,8 @@ func TestOrderService_UploadOrder(t *testing.T) {
 
 	mockOrderRepo := mock_storage.NewMockOrderRepository(ctrl)
 	mockAccrualClient := mock_client.NewMockAccrualClient(ctrl)
-	mockBalanceRepo := mock_storage.NewMockBalanceRepository(ctrl)
 
-	orderService := NewOrderService(mockOrderRepo, mockAccrualClient, mockBalanceRepo)
+	orderService := NewOrderService(mockOrderRepo, mockAccrualClient)
 	ctx := context.Background()
 	userID := uuid.New()
 

@@ -12,6 +12,7 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	models "github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	uuid "github.com/google/uuid"
@@ -42,6 +43,21 @@ func (m *MockOrderService) EXPECT() *MockOrderServiceMockRecorder {
 	return m.recorder
 }
 
+// FindPendingOrders mocks base method.
+func (m *MockOrderService) FindPendingOrders(ctx context.Context, limit int) ([]*models.Order, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindPendingOrders", ctx, limit)
+	ret0, _ := ret[0].([]*models.Order)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FindPendingOrders indicates an expected call of FindPendingOrders.
+func (mr *MockOrderServiceMockRecorder) FindPendingOrders(ctx, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindPendingOrders", reflect.TypeOf((*MockOrderService)(nil).FindPendingOrders), ctx, limit)
+}
+
 // GetUserOrders mocks base method.
 func (m *MockOrderService) GetUserOrders(ctx context.Context, userID uuid.UUID) ([]*models.Order, error) {
 	m.ctrl.T.Helper()
@@ -57,18 +73,19 @@ func (mr *MockOrderServiceMockRecorder) GetUserOrders(ctx, userID any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserOrders", reflect.TypeOf((*MockOrderService)(nil).GetUserOrders), ctx, userID)
 }
 
-// ProcessPendingOrders mocks base method.
-func (m *MockOrderService) ProcessPendingOrders(ctx context.Context, limit int) error {
+// ProcessOrder mocks base method.
+func (m *MockOrderService) ProcessOrder(ctx context.Context, orderID uuid.UUID, number string) (time.Duration, bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ProcessPendingOrders", ctx, limit)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "ProcessOrder", ctx, orderID, number)
+	ret0, _ := ret[0].(time.Duration)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
 }
 
-// ProcessPendingOrders indicates an expected call of ProcessPendingOrders.
-func (mr *MockOrderServiceMockRecorder) ProcessPendingOrders(ctx, limit any) *gomock.Call {
+// ProcessOrder indicates an expected call of ProcessOrder.
+func (mr *MockOrderServiceMockRecorder) ProcessOrder(ctx, orderID, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessPendingOrders", reflect.TypeOf((*MockOrderService)(nil).ProcessPendingOrders), ctx, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessOrder", reflect.TypeOf((*MockOrderService)(nil).ProcessOrder), ctx, orderID, number)
 }
 
 // UploadOrder mocks base method.

@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
-	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
+	"github.com/google/uuid"
 	"github.com/theplant/luhn"
 
-	"github.com/google/uuid"
+	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
+	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 )
 
 type BalanceService interface {
@@ -52,20 +52,14 @@ func (s *balanceService) Withdraw(ctx context.Context, userID uuid.UUID, orderNu
 	if amount <= 0 {
 		return ErrInvalidAmount
 	}
-	balance, err := s.balanceRepo.GetByUserID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("get balance: %w", err)
-	}
-	if balance.Balance < amount {
-		return ErrInsufficientFunds
-	}
-	withdrawal := &models.Withdrawal{
+
+	w := &models.Withdrawal{
 		UserID:      userID,
 		OrderNumber: orderNumber,
 		Amount:      amount,
 		ProcessedAt: time.Now(),
 	}
-	if err := s.withdrawalRepo.Create(ctx, withdrawal); err != nil {
+	if err := s.withdrawalRepo.CreateWithBalanceCheck(ctx, w); err != nil {
 		return fmt.Errorf("create withdrawal: %w", err)
 	}
 	return nil

@@ -3,9 +3,9 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/AlexeyKurlevsky/go-diploma/internal/middleware"
+	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/service"
 )
 
@@ -23,16 +23,18 @@ func (h *BalanceHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	current, withdrawn, err := h.balanceService.GetBalance(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"current":   current,
-		"withdrawn": withdrawn,
+	_ = json.NewEncoder(w).Encode(models.BalanceResponse{
+		Current:   current,
+		Withdrawn: withdrawn,
 	})
 }
 
@@ -42,10 +44,8 @@ func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	var req struct {
-		Order string  `json:"order"`
-		Sum   float64 `json:"sum"`
-	}
+
+	var req models.WithdrawRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -54,6 +54,7 @@ func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid order or sum", http.StatusBadRequest)
 		return
 	}
+
 	err := h.balanceService.Withdraw(r.Context(), userID, req.Order, req.Sum)
 	if err != nil {
 		switch err {
@@ -75,6 +76,7 @@ func (h *BalanceHandler) GetWithdrawals(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	withdrawals, err := h.balanceService.GetWithdrawals(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -84,15 +86,8 @@ func (h *BalanceHandler) GetWithdrawals(w http.ResponseWriter, r *http.Request) 
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	response := make([]map[string]interface{}, len(withdrawals))
-	for i, w := range withdrawals {
-		response[i] = map[string]interface{}{
-			"order":        w.OrderNumber,
-			"sum":          w.Amount,
-			"processed_at": w.ProcessedAt.Format(time.RFC3339),
-		}
-	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(models.NewWithdrawalResponses(withdrawals))
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -18,6 +19,14 @@ type AccrualResponse struct {
 	Accrual *float64 `json:"accrual"` // может быть null
 }
 
+type ErrTooManyRequests struct {
+	RetryAfter time.Duration
+}
+
+func (e *ErrTooManyRequests) Error() string {
+	return fmt.Sprintf("accrual: too many requests, retry after %s", e.RetryAfter)
+}
+
 type accrualClient struct {
 	baseURL    string
 	httpClient *http.Client
@@ -25,10 +34,8 @@ type accrualClient struct {
 
 func NewAccrualClient(baseURL string, timeout time.Duration) AccrualClient {
 	return &accrualClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
+		baseURL:    baseURL,
+		httpClient: &http.Client{Timeout: timeout},
 	}
 }
 
@@ -45,22 +52,34 @@ func (c *accrualClient) CheckOrder(ctx context.Context, orderNumber string) (*Ac
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusNoContent {
-		// Заказ ещё не зарегистрирован в системе
-		return &AccrualResponse{
-			Order:   orderNumber,
-			Status:  "REGISTERED", // будем маппить в наш NEW
-			Accrual: nil,
-		}, nil
-	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var response AccrualResponse
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return nil, fmt.Errorf("decode response: %w", err)
+		}
+		return &response, nil
 
-	if resp.StatusCode != http.StatusOK {
+	case http.StatusNoContent:
+		// Заказ ещё не зарегистрирован во внешней системе
+		return &AccrualResponse{Order: orderNumber, Status: "REGISTERED"}, nil
+
+	case http.StatusTooManyRequests:
+		// Разбираем Retry-After (может быть в секундах или HTTP-дате)
+		retryAfter := 10 * time.Second // значение по умолчанию
+		if v := resp.Header.Get("Retry-After"); v != "" {
+			if secs, err := strconv.Atoi(v); err == nil {
+				retryAfter = time.Duration(secs) * time.Second
+			} else if t, err := http.ParseTime(v); err == nil {
+				retryAfter = time.Until(t)
+				if retryAfter < 0 {
+					retryAfter = 0
+				}
+			}
+		}
+		return nil, &ErrTooManyRequests{RetryAfter: retryAfter}
+
+	default:
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
-
-	var response AccrualResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	return &response, nil
 }

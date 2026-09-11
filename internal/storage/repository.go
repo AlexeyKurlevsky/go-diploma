@@ -35,6 +35,7 @@ type WithdrawalRepository interface {
 	Create(ctx context.Context, withdrawal *models.Withdrawal) error
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]*models.Withdrawal, error)
 	SumByUser(ctx context.Context, userID uuid.UUID) (float64, error)
+	CreateWithBalanceCheck(ctx context.Context, w *models.Withdrawal) error
 }
 
 type BalanceRepository interface {

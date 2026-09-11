@@ -8,12 +8,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/AlexeyKurlevsky/go-diploma/internal/client"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/storage"
 	"github.com/theplant/luhn"
-
-	"github.com/google/uuid"
 )
 
 const (
@@ -26,24 +26,19 @@ const (
 type OrderService interface {
 	UploadOrder(ctx context.Context, userID uuid.UUID, number string) (*models.Order, error)
 	GetUserOrders(ctx context.Context, userID uuid.UUID) ([]*models.Order, error)
-	ProcessPendingOrders(ctx context.Context, limit int) error
+	FindPendingOrders(ctx context.Context, limit int) ([]*models.Order, error)
+	ProcessOrder(ctx context.Context, orderID uuid.UUID, number string) (time.Duration, bool)
 }
 
 type orderService struct {
 	orderRepo     storage.OrderRepository
 	accrualClient client.AccrualClient
-	balanceRepo   storage.BalanceRepository // добавили
 }
 
-func NewOrderService(
-	orderRepo storage.OrderRepository,
-	accrualClient client.AccrualClient,
-	balanceRepo storage.BalanceRepository,
-) OrderService {
+func NewOrderService(orderRepo storage.OrderRepository, accrualClient client.AccrualClient) OrderService {
 	return &orderService{
 		orderRepo:     orderRepo,
 		accrualClient: accrualClient,
-		balanceRepo:   balanceRepo,
 	}
 }
 
@@ -77,11 +72,15 @@ func (s *orderService) UploadOrder(ctx context.Context, userID uuid.UUID, orderN
 	if err := s.orderRepo.Create(ctx, order); err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}
-	// Запускаем обработку в фоне
-	go func() {
-		ctxBg := context.Background()
-		s.processOrder(ctxBg, order.ID, orderNumber)
-	}()
+
+	// Асинхронная первая попытка опроса. Если не получится —
+	// воркер подхватит заказ на следующей итерации.
+	go func(orderID uuid.UUID, num string) {
+		ctxBg, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_, _ = s.ProcessOrder(ctxBg, orderID, num)
+	}(order.ID, order.Number)
+
 	return order, nil
 }
 
@@ -89,29 +88,33 @@ func (s *orderService) GetUserOrders(ctx context.Context, userID uuid.UUID) ([]*
 	return s.orderRepo.FindByUserID(ctx, userID)
 }
 
-func (s *orderService) ProcessPendingOrders(ctx context.Context, limit int) error {
-	orders, err := s.orderRepo.FindPendingOrders(ctx, limit)
-	if err != nil {
-		return fmt.Errorf("find pending: %w", err)
-	}
-	if len(orders) > 0 {
-		log.Printf("Processing %d pending orders", len(orders))
-	}
-	for _, order := range orders {
-		s.processOrder(ctx, order.ID, order.Number)
-	}
-	return nil
+// FindPendingOrders возвращает заказы в статусах NEW и PROCESSING —
+// те, которые ещё нужно опросить во внешнем сервисе.
+func (s *orderService) FindPendingOrders(ctx context.Context, limit int) ([]*models.Order, error) {
+	return s.orderRepo.FindPendingOrders(ctx, limit)
 }
 
-func (s *orderService) processOrder(ctx context.Context, orderID uuid.UUID, number string) {
+// ProcessOrder делает одну попытку опросить внешний сервис для заказа.
+// Возвращает:
+//   - retryAfter — сколько подождать перед следующим опросом (актуально для 429);
+//   - retry      — нужно ли повторить позже.
+func (s *orderService) ProcessOrder(ctx context.Context, orderID uuid.UUID, number string) (time.Duration, bool) {
 	resp, err := s.accrualClient.CheckOrder(ctx, number)
 	if err != nil {
-		log.Printf("Accrual check error for order %s: %v", number, err)
-		return
+		var tooMany *client.ErrTooManyRequests
+		if errors.As(err, &tooMany) {
+			log.Printf("accrual 429 for order %s, retry in %s", number, tooMany.RetryAfter)
+			return tooMany.RetryAfter, true
+		}
+		log.Printf("accrual check error for order %s: %v", number, err)
+		// Ошибку не считаем поводом для backoff — воркер вернётся по общему таймеру.
+		return 0, false
 	}
 
-	var newStatus models.OrderStatus
-	var accrual *float64
+	var (
+		newStatus models.OrderStatus
+		accrual   *float64
+	)
 	switch resp.Status {
 	case StatusRegistered, StatusProcessing:
 		newStatus = models.StatusProcessing
@@ -123,11 +126,11 @@ func (s *orderService) processOrder(ctx context.Context, orderID uuid.UUID, numb
 		accrual = resp.Accrual
 		log.Printf("Order %s processed, accrual: %v", number, accrual)
 	default:
-		newStatus = models.StatusNew
+		return 0, false
 	}
 
 	if err := s.orderRepo.UpdateStatusAndAccrual(ctx, orderID, newStatus, accrual); err != nil {
-		log.Printf("Update order error: %v", err)
-		return
+		log.Printf("update order %s failed: %v", number, err)
 	}
+	return 0, false
 }

@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/AlexeyKurlevsky/go-diploma/internal/middleware"
+	"github.com/AlexeyKurlevsky/go-diploma/internal/models"
 	"github.com/AlexeyKurlevsky/go-diploma/internal/service"
 )
 
@@ -57,6 +57,7 @@ func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+
 	orders, err := h.orderService.GetUserOrders(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -66,19 +67,8 @@ func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	response := make([]map[string]interface{}, len(orders))
-	for i, o := range orders {
-		item := map[string]interface{}{
-			"number":      o.Number,
-			"status":      string(o.Status),
-			"uploaded_at": o.UploadedAt.Format(time.RFC3339),
-		}
-		if o.Accrual != nil {
-			item["accrual"] = *o.Accrual
-		}
-		response[i] = item
-	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(models.NewOrderResponses(orders))
 }
